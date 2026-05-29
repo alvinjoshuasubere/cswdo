@@ -36,6 +36,11 @@ if (!isset($_SESSION['user_id'])) {
                     <i class="bi bi-house-door"></i> Senior Citizen List
                 </a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link text-white <?php echo basename($_SERVER['PHP_SELF']) == 'export.php' ? 'active' : ''; ?>" href="export.php">
+                    <i class="bi bi-download"></i> Export Records
+                </a>
+            </li>
             <hr>
             <hr>
             <li class="nav-item">

@@ -39,7 +39,8 @@ if ($barangays_result) {
 
 // Define predefined barangay options
 $predefined_barangays = [
-    'BRGY. AVANCEñA',
+    'BRGY. ASSUMPTION',
+    'BRGY. AVANCEÑA',
     'BRGY. CACUB',
     'BRGY. CALOOCAN',
     'BRGY. CARPENTER HILL',
@@ -58,7 +59,7 @@ $predefined_barangays = [
     'BRGY. SAN ROQUE',
     'BRGY. SAN JOSE',
     'BRGY. STA. CRUZ',
-    'BRGY. STO. NIñO',
+    'BRGY. STO. NIÑO',
     'BRGY. SARAVIA',
     'BRGY. TOPLAND',
     'BRGY. ZONE 1',
@@ -150,6 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $city = $_POST['city'];
         $province = $_POST['province'];
         $birthdate = !empty($_POST['birthdate']) ? $_POST['birthdate'] : NULL;
+        $osca_id = !empty($_POST['osca_id']) ? $_POST['osca_id'] : NULL;
         
         // Check if name already exists
         $check_stmt = $conn->prepare("SELECT id FROM persons WHERE name = ?");
@@ -160,8 +162,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if ($check_result->num_rows > 0) {
             $message = "Error: Person with name '$name' already exists!";
             $message_type = "danger";
-        } else {
-            // Handle file upload
+        } elseif ($birthdate) {
+            // Calculate age based on birthdate
+            $birthDateObj = new DateTime($birthdate);
+            $today = new DateTime();
+            $age = $today->diff($birthDateObj)->y;
+            
+            if ($age < 60) {
+                $message = "Error: Person must be 60 years or older to be added. Current age: $age years.";
+                $message_type = "danger";
+            } else {
+                // Handle file upload
             $picture = '';
             if (isset($_FILES['picture']) && $_FILES['picture']['error'] == 0) {
                 $target_dir = "uploads/";
@@ -176,8 +187,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $qr_data = "ID: " . $id_number . "\nName: " . $name . ($birthdate ? "\nBirthdate: " . $birthdate : "");
             $qr_code = generateQRCode($qr_data);
             
-            $stmt = $conn->prepare("INSERT INTO persons (id_number, name, sex, barangay, city, province, birthdate, picture, qr_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param("sssssssss", $id_number, $name, $sex, $barangay, $city, $province, $birthdate, $picture, $qr_code);
+            $stmt = $conn->prepare("INSERT INTO persons (id_number, name, sex, barangay, city, province, birthdate, osca_id, picture, qr_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("ssssssssss", $id_number, $name, $sex, $barangay, $city, $province, $birthdate, $osca_id, $picture, $qr_code);
+            
+            if ($stmt->execute()) {
+                    $message = "Person added successfully!";
+                    $message_type = "success";
+                } else {
+                    $message = "Error adding person: " . $conn->error;
+                    $message_type = "danger";
+                }
+            }
+        } else {
+            // Handle case when birthdate is empty - allow adding without age restriction
+            // Handle file upload
+            $picture = '';
+            if (isset($_FILES['picture']) && $_FILES['picture']['error'] == 0) {
+                $target_dir = "uploads/";
+                if (!file_exists($target_dir)) {
+                    mkdir($target_dir, 0777, true);
+                }
+                $picture = $target_dir . time() . '_' . basename($_FILES["picture"]["name"]);
+                move_uploaded_file($_FILES["picture"]["tmp_name"], $picture);
+            }
+            
+            // Generate QR code
+            $qr_data = "ID: " . $id_number . "\nName: " . $name;
+            $qr_code = generateQRCode($qr_data);
+            
+            $stmt = $conn->prepare("INSERT INTO persons (id_number, name, sex, barangay, city, province, birthdate, osca_id, picture, qr_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("ssssssssss", $id_number, $name, $sex, $barangay, $city, $province, $birthdate, $osca_id, $picture, $qr_code);
             
             if ($stmt->execute()) {
                 $message = "Person added successfully!";
@@ -188,16 +227,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
     } elseif (isset($_POST['update_person'])) {
-        $id = $_POST['id'];
-        $name = $_POST['name'];
-        $sex = $_POST['sex'];
-        $barangay = $_POST['barangay'];
-        $city = $_POST['city'];
-        $province = $_POST['province'];
-        $birthdate = !empty($_POST['birthdate']) ? $_POST['birthdate'] : NULL;
-        $deceased = isset($_POST['deceased']) ? 1 : 0;
+        $id            = (int)$_POST['id'];
+        $name          = trim($_POST['name']);
+        $sex           = trim($_POST['sex']);
+        $barangay      = trim($_POST['barangay']);
+        $city          = trim($_POST['city']);
+        $province      = trim($_POST['province']);
+        $birthdate     = !empty($_POST['birthdate'])     ? $_POST['birthdate']     : NULL;
+        $osca_id       = !empty($_POST['osca_id'])       ? trim($_POST['osca_id']) : NULL;
+        $deceased      = isset($_POST['deceased'])       ? 1                       : 0;
         $deceased_date = !empty($_POST['deceased_date']) ? $_POST['deceased_date'] : NULL;
-        
+
         // Handle file upload
         if (isset($_FILES['picture']) && $_FILES['picture']['error'] == 0) {
             $target_dir = "uploads/";
@@ -206,14 +246,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
             $picture = $target_dir . time() . '_' . basename($_FILES["picture"]["name"]);
             move_uploaded_file($_FILES["picture"]["tmp_name"], $picture);
-            
+
             $stmt = $conn->prepare("UPDATE persons SET name = ?, sex = ?, barangay = ?, city = ?, province = ?, birthdate = ?, picture = ?, deceased = ?, deceased_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?");
-            $stmt->bind_param("ssssssssssi", $name, $sex, $barangay, $city, $province, $birthdate, $picture, $deceased, $deceased_date, $id);
+            $stmt->bind_param("sssssssisi", $name, $sex, $barangay, $city, $province, $birthdate, $picture, $deceased, $deceased_date, $id);
         } else {
             $stmt = $conn->prepare("UPDATE persons SET name = ?, sex = ?, barangay = ?, city = ?, province = ?, birthdate = ?, deceased = ?, deceased_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?");
-            $stmt->bind_param("ssssssssi", $name, $sex, $barangay, $city, $province, $birthdate, $deceased, $deceased_date, $id);
+            $stmt->bind_param("ssssssisi", $name, $sex, $barangay, $city, $province, $birthdate, $deceased, $deceased_date, $id);
         }
-        
+
         if ($stmt->execute()) {
             $message = "Person updated successfully!";
             $message_type = "success";
@@ -248,7 +288,7 @@ $sql = "SELECT *,
         WHEN birthdate IS NULL THEN 0
         ELSE TIMESTAMPDIFF(YEAR, birthdate, CURDATE()) 
     END as age 
-    FROM persons$search_condition ORDER BY created_at DESC LIMIT ? OFFSET ?";
+    FROM persons$search_condition ORDER BY name ASC LIMIT ? OFFSET ?";
 $stmt = $conn->prepare($sql);
 
 if (!empty($search_params)) {
@@ -281,6 +321,69 @@ if ($result) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* Upper right corner alert positioning */
+        .alert-positioned {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+            min-width: 300px;
+            max-width: 500px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            animation: slideInRight 0.3s ease-out;
+        }
+        
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .alert-positioned.fade-out {
+            animation: slideOutRight 0.3s ease-out forwards;
+        }
+        
+        @keyframes slideOutRight {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+        
+        /* Enhanced alert styling */
+        .alert-positioned .alert-success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        
+        .alert-positioned .alert-danger {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        
+        .alert-positioned .alert-warning {
+            background-color: #fff3cd;
+            border-color: #ffeaa7;
+            color: #856404;
+        }
+        
+        .alert-positioned .btn-close {
+            filter: brightness(0) invert(1);
+        }
+    </style>
 </head>
 <body>
     <div class="container-fluid">
@@ -310,14 +413,14 @@ if ($result) {
                 </div>
 
                 <?php if ($message): ?>
-                    <div class="alert alert-<?php echo $message_type; ?> alert-dismissible fade show" role="alert">
+                    <div class="alert alert-<?php echo $message_type; ?> alert-dismissible fade show alert-positioned" role="alert">
                         <?php echo $message; ?>
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 <?php endif; ?>
 
                 <?php if (!empty($upload_errors)): ?>
-                    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                    <div class="alert alert-warning alert-dismissible fade show alert-positioned" role="alert">
                         <h6>Upload Errors:</h6>
                         <ul class="mb-0">
                             <?php foreach ($upload_errors as $error): ?>
@@ -425,7 +528,7 @@ if ($result) {
                                     <table class="table table-striped">
                                         <thead>
                                             <tr>
-                                                <th>ID Number</th>
+                                                <th>OSCA ID Number</th>
                                                 <th>Name</th>
                                                 <th>Sex</th>
                                                 <th>Age</th>
@@ -570,16 +673,23 @@ if ($result) {
                     <h5 class="modal-title">Add New Person</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <form method="POST" enctype="multipart/form-data">
+                <form method="POST" enctype="multipart/form-data" onsubmit="return validateAge()">
                     <div class="modal-body">
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label for="id_number" class="form-label">ID Number *</label>
+                                    <label for="id_number" class="form-label">OSCA ID Number *</label>
                                     <input type="text" class="form-control" id="id_number" name="id_number" required>
                                 </div>
                             </div>
-                            <div class="col-md-6">
+                            <!-- <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="osca_id" class="form-label">OSCA ID</label>
+                                    <input type="text" class="form-control" id="osca_id" name="osca_id">
+                                    <div class="form-text">Office of Senior Citizens Affairs ID</div>
+                                </div>
+                            </div> -->
+                            <div class="col-md-12">
                                 <div class="mb-3">
                                     <label for="name" class="form-label">Full Name *</label>
                                     <input type="text" class="form-control" id="name" name="name" required>
@@ -587,7 +697,7 @@ if ($result) {
                             </div>
                         </div>
                         <div class="row">
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <div class="mb-3">
                                     <label for="sex" class="form-label">Sex *</label>
                                     <select class="form-select" id="sex" name="sex" required>
@@ -597,11 +707,10 @@ if ($result) {
                                     </select>
                                 </div>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <div class="mb-3">
                                     <label for="birthdate" class="form-label">Birthdate</label>
                                     <input type="date" class="form-control" id="birthdate" name="birthdate">
-                                    <div class="form-text">Leave empty if unknown</div>
                                 </div>
                             </div>
                         </div>
@@ -685,7 +794,7 @@ if ($result) {
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label for="edit_id_number" class="form-label">ID Number</label>
+                                    <label for="edit_id_number" class="form-label">OSCA ID Number</label>
                                     <input type="text" class="form-control" id="edit_id_number" name="id_number" readonly>
                                 </div>
                             </div>
@@ -697,7 +806,7 @@ if ($result) {
                             </div>
                         </div>
                         <div class="row">
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <div class="mb-3">
                                     <label for="edit_sex" class="form-label">Sex</label>
                                     <select class="form-select" id="edit_sex" name="sex" required>
@@ -706,13 +815,20 @@ if ($result) {
                                     </select>
                                 </div>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <div class="mb-3">
                                     <label for="edit_birthdate" class="form-label">Birthdate</label>
                                     <input type="date" class="form-control" id="edit_birthdate" name="birthdate">
                                     <div class="form-text">Leave empty if unknown</div>
                                 </div>
                             </div>
+                            <!-- <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="edit_osca_id" class="form-label">OSCA ID</label>
+                                    <input type="text" class="form-control" id="edit_osca_id" name="osca_id" placeholder="Optional">
+                                    <div class="form-text">Office of Senior Citizens Affairs ID (if applicable)</div>
+                                </div>
+                            </div> -->
                         </div>
                         <div class="row">
                             <div class="col-md-4">
@@ -826,6 +942,7 @@ if ($result) {
                     document.getElementById('edit_city').value = data.city;
                     document.getElementById('edit_province').value = data.province;
                     document.getElementById('edit_birthdate').value = data.birthdate;
+                    // document.getElementById('edit_osca_id').value = data.osca_id || '';
                     document.getElementById('edit_deceased').checked = data.deceased == 1;
                     document.getElementById('edit_deceased_date').value = data.deceased_date;
                     
@@ -1065,9 +1182,62 @@ if ($result) {
             window.print();
         }
         
+        function validateAge() {
+            const birthdate = document.getElementById('birthdate').value;
+            
+            if (birthdate) {
+                const birthDate = new Date(birthdate);
+                const today = new Date();
+                const age = today.getFullYear() - birthDate.getFullYear();
+                const monthDiff = today.getMonth() - birthDate.getMonth();
+                const dayDiff = today.getDate() - birthDate.getDate();
+                
+                // Adjust age if birthday hasn't occurred yet this year
+                const actualAge = (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) ? age - 1 : age;
+                
+                if (actualAge < 60) {
+                    alert('Person must be 60 years or older to be added. Current age: ' + actualAge + ' years.');
+                    return false;
+                }
+            }
+            
+            return true;
+        }
+        
         // Initialize event listener
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('edit_deceased').addEventListener('change', toggleDeceasedDate);
+            
+            // Auto-hide positioned alerts after 5 seconds
+            const positionedAlerts = document.querySelectorAll('.alert-positioned');
+            positionedAlerts.forEach(alert => {
+                setTimeout(() => {
+                    if (alert.parentNode) {
+                        alert.classList.add('fade-out');
+                        setTimeout(() => {
+                            if (alert.parentNode) {
+                                alert.remove();
+                            }
+                        }, 300);
+                    }
+                }, 5000);
+            });
+            
+            // Handle manual close with animation
+            const closeButtons = document.querySelectorAll('.alert-positioned .btn-close');
+            closeButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const alert = this.closest('.alert-positioned');
+                    if (alert) {
+                        alert.classList.add('fade-out');
+                        setTimeout(() => {
+                            if (alert.parentNode) {
+                                alert.remove();
+                            }
+                        }, 300);
+                    }
+                });
+            });
         });
     </script>
 </body>
