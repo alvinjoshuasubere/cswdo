@@ -89,6 +89,7 @@ $user_role = isset($_SESSION['user_role']) ? $_SESSION['user_role'] : 'staff';
             padding: 0.35rem 0.5rem;
             border-radius: 6px;
             transition: background 0.15s;
+            margin-left: 20px;
         }
         .barangay-list .form-check:hover {
             background: #ede9fe;
