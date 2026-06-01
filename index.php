@@ -482,50 +482,42 @@ if ($result) {
                         <div class="card">
                             <div class="card-header">
                                 <div class="row align-items-center">
-                                    <div class="col-md-4">
+                                    <!-- <div class="col-md-4">
                                         <h5 class="card-title mb-0">Registered Senior Citizens</h5>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <form method="GET" class="d-flex" id="searchForm">
-                                            <input type="text" class="form-control form-control-sm me-2" name="search" placeholder="Search..." value="<?php echo htmlspecialchars($search); ?>">
-                                            <input type="hidden" name="barangay" id="hiddenBarangay" value="<?php echo htmlspecialchars($filter_barangay); ?>">
-                                            <input type="hidden" name="sex" id="hiddenSex" value="<?php echo htmlspecialchars($filter_sex); ?>">
-                                            <button type="submit" class="btn btn-sm btn-outline-primary">
-                                                <i class="bi bi-search"></i> Search
-                                            </button>
-                                        </form>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="d-flex justify-content-end">
-                                            <!-- Barangay Filter -->
-                                            <select class="form-select form-select-sm me-2" name="barangay" id="barangayFilter" onchange="applyFilters()">
+                                    </div> -->
+                                    <form id="searchForm" class="row g-2 align-items-center w-100">
+                                        <div class="col-md-4">
+                                            <input type="text" class="form-control form-control-md" name="search" id="searchInput" placeholder="Search..." value="<?php echo htmlspecialchars($search); ?>">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <select class="form-select form-select-md" name="barangay" id="barangayFilter" onchange="applyFilters()">
                                                 <option value="">All Barangays</option>
                                                 <?php foreach ($barangays as $barangay): ?>
-                                                    <option value="<?php echo htmlspecialchars($barangay); ?>" <?php echo $filter_barangay === $barangay ? 'selected' : ''; ?>>
-                                                        <?php echo htmlspecialchars($barangay); ?>
-                                                    </option>
+                                                    <option value="<?php echo htmlspecialchars($barangay); ?>" <?php echo $filter_barangay === $barangay ? 'selected' : ''; ?>><?php echo htmlspecialchars($barangay); ?></option>
                                                 <?php endforeach; ?>
                                             </select>
-                                            
-                                            <!-- Sex Filter -->
-                                            <select class="form-select form-select-sm" id="sexFilter" onchange="applyFilters()">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <select class="form-select form-select-md" name="sex" id="sexFilter" onchange="applyFilters()">
                                                 <option value="">All Sex</option>
                                                 <option value="Male" <?php echo $filter_sex === 'Male' ? 'selected' : ''; ?>>Male</option>
                                                 <option value="Female" <?php echo $filter_sex === 'Female' ? 'selected' : ''; ?>>Female</option>
                                             </select>
-                                            
-                                            <?php if (!empty($search) || !empty($filter_barangay) || !empty($filter_sex)): ?>
-                                                <a href="index.php" class="btn btn-sm btn-outline-secondary ms-2">
-                                                    <i class="bi bi-x-circle"></i> Clear
-                                                </a>
-                                            <?php endif; ?>
                                         </div>
-                                    </div>
+                                        <div class="col-md-auto d-flex gap-2">
+                                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="filterTable()">
+                                                <i class="bi bi-search"></i> Search
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearFilters()">
+                                                <i class="bi bi-x-circle"></i> Clear
+                                            </button>
+                                        </div>
+                                    </form>
                                 </div>
                             </div>
                             <div class="card-body">
                                 <div class="table-responsive">
-                                    <table class="table table-striped">
+                                    <table id="personsTable" class="table">
                                         <thead>
                                             <tr>
                                                 <th>OSCA ID Number</th>
@@ -967,27 +959,49 @@ if ($result) {
         }
         
         function applyFilters() {
-            const barangay = document.getElementById('barangayFilter').value;
-            const sex = document.getElementById('sexFilter').value;
-            const search = document.querySelector('input[name="search"]').value;
-            
-            // Update hidden fields in search form
-            document.getElementById('hiddenBarangay').value = barangay;
-            document.getElementById('hiddenSex').value = sex;
-            
-            // Build URL with current filters
-            let url = 'index.php?';
-            const params = [];
-            
-            if (search) params.push('search=' + encodeURIComponent(search));
-            if (barangay) params.push('barangay=' + encodeURIComponent(barangay));
-            if (sex) params.push('sex=' + encodeURIComponent(sex));
-            
-            if (params.length > 0) {
-                url += params.join('&');
-                window.location.href = url;
-            } else {
-                window.location.href = 'index.php';
+            filterTable();
+        }
+
+        function clearFilters() {
+            const searchInput = document.getElementById('searchInput');
+            const barangayFilter = document.getElementById('barangayFilter');
+            const sexFilter = document.getElementById('sexFilter');
+
+            if (searchInput) searchInput.value = '';
+            if (barangayFilter) barangayFilter.selectedIndex = 0;
+            if (sexFilter) sexFilter.selectedIndex = 0;
+            filterTable();
+        }
+
+        function filterTable() {
+            const searchInput = document.getElementById('searchInput');
+            const barangayFilter = document.getElementById('barangayFilter');
+            const sexFilter = document.getElementById('sexFilter');
+            const table = document.getElementById('personsTable');
+            const searchValue = searchInput ? searchInput.value.trim().toLowerCase() : '';
+            const barangayValue = barangayFilter ? barangayFilter.value.trim().toLowerCase() : '';
+            const sexValue = sexFilter ? sexFilter.value : '';
+            let visibleCount = 0;
+
+            if (!table) return;
+            const rows = table.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+                const rowText = row.textContent.toLowerCase();
+                const rowBarangayCell = row.querySelector('td:nth-child(6)');
+                const rowSexCell = row.querySelector('td:nth-child(3)');
+                const rowBarangay = rowBarangayCell ? rowBarangayCell.textContent.trim().toLowerCase() : '';
+                const rowSex = rowSexCell ? rowSexCell.textContent.trim() : '';
+                const matchesSearch = !searchValue || rowText.includes(searchValue);
+                const matchesBarangay = !barangayValue || rowBarangay === barangayValue;
+                const matchesSex = !sexValue || rowSex === sexValue;
+                const show = matchesSearch && matchesBarangay && matchesSex;
+                row.style.display = show ? '' : 'none';
+                if (show) visibleCount++;
+            });
+
+            const infoText = document.getElementById('filterInfoText');
+            if (infoText) {
+                infoText.textContent = visibleCount + ' of ' + rows.length + ' rows shown';
             }
         }
         
@@ -1238,6 +1252,18 @@ if ($result) {
                     }
                 });
             });
+
+            // Auto-filter table as user types (debounced)
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                let searchTimer = null;
+                searchInput.addEventListener('input', function() {
+                    clearTimeout(searchTimer);
+                    searchTimer = setTimeout(() => {
+                        filterTable();
+                    }, 250);
+                });
+            }
         });
     </script>
 </body>
